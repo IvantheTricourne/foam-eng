@@ -45,12 +45,12 @@ import Database.Selda.SQLite as SQL
 
 type UserAPI1 = "users" :> Get '[JSON] [User]
 type UserAPI = "users" :> Get '[JSON] [User]
-             :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
+           :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
+           :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
 
 newtype Username = Username String
-
 instance Show Username where
-  show (Username x) = x
+  show (Username x) = show x
 instance Eq Username where
   (Username x) == (Username y) = x == y
 instance ToJSON Username where
@@ -62,6 +62,19 @@ data User = User
   , userID :: Int
   } deriving (Eq, Show, Generic)
 instance ToJSON User
+
+data UserInfo = UserInfo
+  { userInfoName :: String
+  , userAge :: Int
+  } deriving (Eq, Show, Generic)
+instance FromJSON UserInfo
+
+newtype PostResponse = PostResponse Int
+-- @NOTE: this seems a bit hacky
+-- trying to return an JSON object with 'userID' as a key
+instance ToJSON PostResponse where
+  toJSON (PostResponse x) = object [ "userID" .= (show x)]
+
 
 users1 :: [User]
 users1 =
@@ -79,10 +92,14 @@ server1 = return users1
 
 -- @TODO: Postgres stuff goes here
 server :: Server UserAPI
-server = return []
+server = return users1
      :<|> user
+     :<|> postUser
   where user :: Int -> Handler User
         user x = return (User (Username "Test") 420 x)
+
+        postUser :: UserInfo -> Handler PostResponse
+        postUser userInfo = return (PostResponse 420)
 
 userAPI1 :: Proxy UserAPI1
 userAPI1 = Proxy
