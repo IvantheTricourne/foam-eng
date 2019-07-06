@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
@@ -15,6 +16,7 @@ module Main where
 
 import Lib
 
+-- servant
 import Prelude ()
 import Prelude.Compat
 
@@ -41,32 +43,64 @@ import Servant.Types.SourceT (source)
 import qualified Data.Aeson.Parser
 import qualified Text.Blaze.Html
 
-type UserAPI1 = "users" :> Get '[JSON] [User]
+-- selda
+import Database.Selda as Selda
+import Database.Selda.SQLite as SQL
 
-data User = User
-  { name :: String
-  , age :: Int
-  , email :: String
-  , registration_date :: Day
-  } deriving (Eq, Show, Generic)
-instance ToJSON User
+-- type UserAPI1 = "users" :> Get '[JSON] [User]
 
-users1 :: [User]
-users1 =
-  [ User "Isaac Newton"    372 "isaac@newton.co.uk" (fromGregorian 1683  3 1)
-  , User "Albert Einstein" 136 "ae@mc2.org"         (fromGregorian 1905 12 1)
-  ]
+-- data User = User
+--   { name :: String
+--   , age :: Int
+--   , email :: String
+--   , registration_date :: Day
+--   } deriving (Eq, Show, Generic)
+-- instance ToJSON User
 
-server1 :: Server UserAPI1
-server1 = return users1
+-- users1 :: [User]
+-- users1 =
+--   [ User "Isaac Newton"    372 "isaac@newton.co.uk" (fromGregorian 1683  3 1)
+--   , User "Albert Einstein" 136 "ae@mc2.org"         (fromGregorian 1905 12 1)
+--   ]
 
-userAPI :: Proxy UserAPI1
-userAPI = Proxy
--- 'serve' comes from servant and hands you a WAI Application,
--- which you can think of as an "abstract" web application,
--- not yet a webserver.
-app1 :: Application
-app1 = serve userAPI server1
+-- server1 :: Server UserAPI1
+-- server1 = return users1
 
-main :: IO ()
-main = run 8081 app1
+-- userAPI :: Proxy UserAPI1
+-- userAPI = Proxy
+-- -- 'serve' comes from servant and hands you a WAI Application,
+-- -- which you can think of as an "abstract" web application,
+-- -- not yet a webserver.
+-- app1 :: Application
+-- app1 = serve userAPI server1
+
+data Pet = Dog | Horse | Dragon
+  deriving (Show, Read, Bounded, Enum)
+instance SqlType Pet
+
+data Person = Person
+  { name :: Text
+  , age  :: Int
+  , pet  :: Maybe Pet
+  } deriving Generic
+instance SqlRow Person
+
+people :: Table Person
+people = table "people" [#name :- primary]
+
+main = withSQLite "people.sqlite" $ do
+  createTable people
+  insert_ people
+    [ Person "Velvet"    19 (Just Dog)
+    , Person "Kobayashi" 23 (Just Dragon)
+    , Person "Miyu"      10 Nothing
+    ]
+
+  adultsAndTheirPets <- query $ do
+    person <- select people
+    restrict (person Selda.! #age .>= 18)
+    return (person Selda.! #name Selda.:*: person Selda.! #pet)
+  liftIO $ print adultsAndTheirPets
+
+-- main :: IO ()
+-- main = run 8081 app1
