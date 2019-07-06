@@ -45,8 +45,10 @@ import Database.Selda.SQLite as SQL
 
 type UserAPI1 = "users" :> Get '[JSON] [User]
 type UserAPI = "users" :> Get '[JSON] [User]
+             :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
 
 newtype Username = Username String
+
 instance Show Username where
   show (Username x) = x
 instance Eq Username where
@@ -75,16 +77,23 @@ users1 =
 server1 :: Server UserAPI1
 server1 = return users1
 
+-- @TODO: Postgres stuff goes here
 server :: Server UserAPI
 server = return []
+     :<|> user
+  where user :: Int -> Handler User
+        user x = return (User (Username "Test") 420 x)
 
-userAPI :: Proxy UserAPI1
-userAPI = Proxy
+userAPI1 :: Proxy UserAPI1
+userAPI1 = Proxy
 -- 'serve' comes from servant and hands you a WAI Application,
 -- which you can think of as an "abstract" web application,
 -- not yet a webserver.
 app1 :: Application
-app1 = serve userAPI server1
+app1 = serve userAPI1 server1
+
+userAPI :: Proxy UserAPI
+userAPI = Proxy
 
 app :: Application
 app = serve userAPI server
@@ -119,4 +128,4 @@ people = table "people" [#name :- primary]
 --   liftIO $ print adultsAndTheirPets
 
 main :: IO ()
-main = run 8081 app1
+main = run 8081 app
