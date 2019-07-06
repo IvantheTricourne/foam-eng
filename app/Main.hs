@@ -62,7 +62,11 @@ data User = User
   , userID :: Int
   } deriving (Eq, Show, Generic)
 instance ToJSON User
+-- @NOTE: this will need a FromJSON instance
 
+-- @NOTE: this isn't necessary.
+-- JSON needs exact names, but can have one or more
+-- missing keys
 data UserInfo = UserInfo
   { userInfoName :: String
   , userAge :: Int
