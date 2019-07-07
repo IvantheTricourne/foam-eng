@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -46,18 +47,10 @@ import Database.Selda.SQLite as SQL
 type UserAPI1 = "users" :> Get '[JSON] [User]
 type UserAPI = "users" :> Get '[JSON] [User]
            :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
-           -- :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
-           :<|> "user" :> ReqBody '[JSON] User :> Post '[JSON] PostResponse
+           :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
 
+-- @TODO: can we avoid using `Generic`?
 newtype Username = Username String deriving Generic
--- instance Show Username where
---   show (Username x) = show x
--- instance Eq Username where
---   (Username x) == (Username y) = x == y
--- instance ToJSON Username where
---   toJSON (Username x) = toJSON x
--- instance FromJSON Username where
---   parseJSON (String x) = Username <$> undefined --(show x)
 instance ToJSON Username
 instance FromJSON Username
 
@@ -68,53 +61,36 @@ data User = User
   } deriving (Generic)
 instance Eq User
 instance Show User
-instance ToJSON User
-instance FromJSON User
--- instance ToJSON User where
---   toJSON (User (Username name) age userID) =
---     object [ "username" .= name
---            , "age" .= age
---            , "userID" .= userID
---            ]
--- instance FromJSON User where
---   parseJSON (Object v) =
---     User <$>
---     v .: "username" <*>
---     v .: "age" <*>
---     v .: "userID"
---   parseJSON _ = mzero
+instance ToJSON User where
+  toJSON (User (Username name) age userID) =
+    object [ "username" .= name
+           , "age" .= age
+           , "userID" .= userID
+           ]
+instance FromJSON User where
+  parseJSON (Object v) =
+    User <$>
+    v .: "username" <*>
+    v .: "age" <*>
+    v .: "userID"
+  parseJSON _ = mzero
 
--- @NOTE: this will need a FromJSON instance
-
--- @NOTE: this isn't necessary.
--- JSON needs exact names, but can have one or more
--- missing keys
--- data UserInfo = UserInfo
---   { userInfoName :: String
---   , userAge :: Int
---   } deriving (Eq, Show, Generic)
--- instance FromJSON UserInfo
+data UserInfo = UserInfo
+  { username :: String
+  , age :: Int
+  } deriving (Eq, Show, Generic)
+instance ToJSON UserInfo
+instance FromJSON UserInfo
 
 newtype PostResponse = PostResponse Int
--- @NOTE: this seems a bit hacky
--- trying to return an JSON object with 'userID' as a key
 instance ToJSON PostResponse where
   toJSON (PostResponse x) = object [ "userID" .= x ]
 
-
 users1 :: [User]
 users1 =
-  -- w/ updated 'User' type
   [ User (Username "Isaac Newton")    372 1337
   , User (Username "Albert Einstein") 136 133734
   ]
-  -- -- old example
-  -- [ User "Isaac Newton"    372 "isaac@newton.co.uk" (fromGregorian 1683  3 1)
-  -- , User "Albert Einstein" 136 "ae@mc2.org"         (fromGregorian 1905 12 1)
-  -- ]
-
-server1 :: Server UserAPI1
-server1 = return users1
 
 -- @TODO: Postgres stuff goes here
 server :: Server UserAPI
@@ -125,16 +101,8 @@ server = return users1
         user x = return (User (Username "Test") 420 x)
 
         -- postUser :: UserInfo -> Handler PostResponse
-        postUser :: User -> Handler PostResponse
-        postUser userInfo = return (PostResponse 420)
-
-userAPI1 :: Proxy UserAPI1
-userAPI1 = Proxy
--- 'serve' comes from servant and hands you a WAI Application,
--- which you can think of as an "abstract" web application,
--- not yet a webserver.
-app1 :: Application
-app1 = serve userAPI1 server1
+        postUser :: UserInfo -> Handler PostResponse
+        postUser (UserInfo n a) = return (PostResponse 420)
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy
