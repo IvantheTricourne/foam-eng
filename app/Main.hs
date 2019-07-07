@@ -46,38 +46,60 @@ import Database.Selda.SQLite as SQL
 type UserAPI1 = "users" :> Get '[JSON] [User]
 type UserAPI = "users" :> Get '[JSON] [User]
            :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
-           :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
+           -- :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
+           :<|> "user" :> ReqBody '[JSON] User :> Post '[JSON] PostResponse
 
-newtype Username = Username String
-instance Show Username where
-  show (Username x) = show x
-instance Eq Username where
-  (Username x) == (Username y) = x == y
-instance ToJSON Username where
-  toJSON (Username x) = toJSON x
+newtype Username = Username String deriving Generic
+-- instance Show Username where
+--   show (Username x) = show x
+-- instance Eq Username where
+--   (Username x) == (Username y) = x == y
+-- instance ToJSON Username where
+--   toJSON (Username x) = toJSON x
+-- instance FromJSON Username where
+--   parseJSON (String x) = Username <$> undefined --(show x)
+instance ToJSON Username
+instance FromJSON Username
 
 data User = User
   { username :: Username
   , age :: Int
   , userID :: Int
-  } deriving (Eq, Show, Generic)
+  } deriving (Generic)
+instance Eq User
+instance Show User
 instance ToJSON User
+instance FromJSON User
+-- instance ToJSON User where
+--   toJSON (User (Username name) age userID) =
+--     object [ "username" .= name
+--            , "age" .= age
+--            , "userID" .= userID
+--            ]
+-- instance FromJSON User where
+--   parseJSON (Object v) =
+--     User <$>
+--     v .: "username" <*>
+--     v .: "age" <*>
+--     v .: "userID"
+--   parseJSON _ = mzero
+
 -- @NOTE: this will need a FromJSON instance
 
 -- @NOTE: this isn't necessary.
 -- JSON needs exact names, but can have one or more
 -- missing keys
-data UserInfo = UserInfo
-  { userInfoName :: String
-  , userAge :: Int
-  } deriving (Eq, Show, Generic)
-instance FromJSON UserInfo
+-- data UserInfo = UserInfo
+--   { userInfoName :: String
+--   , userAge :: Int
+--   } deriving (Eq, Show, Generic)
+-- instance FromJSON UserInfo
 
 newtype PostResponse = PostResponse Int
 -- @NOTE: this seems a bit hacky
 -- trying to return an JSON object with 'userID' as a key
 instance ToJSON PostResponse where
-  toJSON (PostResponse x) = object [ "userID" .= (show x)]
+  toJSON (PostResponse x) = object [ "userID" .= x ]
 
 
 users1 :: [User]
@@ -102,7 +124,8 @@ server = return users1
   where user :: Int -> Handler User
         user x = return (User (Username "Test") 420 x)
 
-        postUser :: UserInfo -> Handler PostResponse
+        -- postUser :: UserInfo -> Handler PostResponse
+        postUser :: User -> Handler PostResponse
         postUser userInfo = return (PostResponse 420)
 
 userAPI1 :: Proxy UserAPI1
