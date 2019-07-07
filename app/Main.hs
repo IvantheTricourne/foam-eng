@@ -24,9 +24,11 @@ import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.ByteString
 import Data.ByteString (ByteString)
+import Data.Hashable
 import Data.List
 import Data.Maybe
 import Data.String.Conversions
+import Data.Text
 import Data.Time.Calendar
 import GHC.Generics
 import Lucid
@@ -35,6 +37,7 @@ import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
 import System.Directory
+import System.Random
 import Text.Blaze
 import Text.Blaze.Html.Renderer.Utf8
 import Servant.Types.SourceT (source)
@@ -44,10 +47,8 @@ import qualified Text.Blaze.Html
 import Database.Selda as Selda
 import Database.Selda.SQLite as SQL
 
-type UserAPI1 = "users" :> Get '[JSON] [User]
-type UserAPI = "users" :> Get '[JSON] [User]
-           :<|> "user" :> Capture "userID" Int :> Get '[JSON] User
-           :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
+type UserAPI = "user" :> Capture "userID" Int :> Get '[JSON] User
+          :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
 
 -- @TODO: can we avoid using `Generic`?
 newtype Username = Username String deriving Generic
@@ -55,25 +56,13 @@ instance ToJSON Username
 instance FromJSON Username
 
 data User = User
-  { username :: Username
+  { username :: Text
   , age :: Int
   , userID :: Int
-  } deriving (Generic)
-instance Eq User
-instance Show User
-instance ToJSON User where
-  toJSON (User (Username name) age userID) =
-    object [ "username" .= name
-           , "age" .= age
-           , "userID" .= userID
-           ]
-instance FromJSON User where
-  parseJSON (Object v) =
-    User <$>
-    v .: "username" <*>
-    v .: "age" <*>
-    v .: "userID"
-  parseJSON _ = mzero
+  } deriving (Eq,Show,Generic)
+instance SqlRow User
+instance ToJSON User
+instance FromJSON User
 
 data UserInfo = UserInfo
   { username :: String
@@ -86,23 +75,26 @@ newtype PostResponse = PostResponse Int
 instance ToJSON PostResponse where
   toJSON (PostResponse x) = object [ "userID" .= x ]
 
-users1 :: [User]
-users1 =
-  [ User (Username "Isaac Newton")    372 1337
-  , User (Username "Albert Einstein") 136 133734
-  ]
-
--- @TODO: Postgres stuff goes here
 server :: Server UserAPI
-server = return users1
-     :<|> user
+server =  getUser
      :<|> postUser
-  where user :: Int -> Handler User
-        user x = return (User (Username "Test") 420 x)
+  where getUser :: Int -> Handler User
+        -- @TODO: remove file dep
+        getUser x = withSQLite "user-test.sqlite" $ do
+          returnMe <- query $ do
+            person <- select users
+            restrict (person Selda.! #userID .== (int x))
+            return person
+          -- @NOTE: thinking this is wrong
+          -- probably can make this better
+          return $ (Data.List.head returnMe)
 
-        -- postUser :: UserInfo -> Handler PostResponse
         postUser :: UserInfo -> Handler PostResponse
-        postUser (UserInfo n a) = return (PostResponse 420)
+        -- @TODO: remove file dep
+        postUser (UserInfo n a) = withSQLite "user-test.sqlite" $ do
+          insert_ users [ User (pack n) a newUserId ]
+          return (PostResponse newUserId)
+          where newUserId = hash $ n ++ (show a)
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy
@@ -110,34 +102,11 @@ userAPI = Proxy
 app :: Application
 app = serve userAPI server
 
-data Pet = Dog | Horse | Dragon
-  deriving (Show, Read, Bounded, Enum)
-instance SqlType Pet
+users :: Table User
+users = table "users" [#userID :- primary]
 
-data Person = Person
-  { name :: Text
-  , personAge  :: Int
-  , pet  :: Maybe Pet
-  } deriving Generic
-instance SqlRow Person
-
-people :: Table Person
-people = table "people" [#name :- primary]
-
--- -- SQLITE example
--- main = withSQLite "people.sqlite" $ do
---   createTable people
---   insert_ people
---     [ Person "Velvet"    19 (Just Dog)
---     , Person "Kobayashi" 23 (Just Dragon)
---     , Person "Miyu"      10 Nothing
---     ]
-
---   adultsAndTheirPets <- query $ do
---     person <- select people
---     restrict (person Selda.! #personAge .>= 18)
---     return (person Selda.! #name Selda.:*: person Selda.! #pet)
---   liftIO $ print adultsAndTheirPets
-
+-- @TODO: remove file dep
 main :: IO ()
-main = run 8081 app
+main = withSQLite "user-test.sqlite" $ do
+  tryCreateTable users
+  liftIO $ run 8081 app
