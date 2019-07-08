@@ -37,7 +37,6 @@ import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
 import System.Directory
-import System.Random
 import Text.Blaze
 import Text.Blaze.Html.Renderer.Utf8
 import Servant.Types.SourceT (source)
@@ -79,7 +78,6 @@ server :: Server UserAPI
 server =  getUser
      :<|> postUser
   where getUser :: Int -> Handler User
-        -- @TODO: remove file dep
         getUser x = withSQLite "user-test.sqlite" $ do
           returnMe <- query $ do
             person <- select users
@@ -90,7 +88,6 @@ server =  getUser
           return $ (Data.List.head returnMe)
 
         postUser :: UserInfo -> Handler PostResponse
-        -- @TODO: remove file dep
         postUser (UserInfo n a) = withSQLite "user-test.sqlite" $ do
           insert_ users [ User (pack n) a newUserId ]
           return (PostResponse newUserId)
@@ -105,8 +102,10 @@ app = serve userAPI server
 users :: Table User
 users = table "users" [#userID :- primary]
 
--- @TODO: remove file dep
+appSettings :: Settings
+appSettings = setHost "0.0.0.0" defaultSettings
+
 main :: IO ()
 main = withSQLite "user-test.sqlite" $ do
   tryCreateTable users
-  liftIO $ run 8081 app
+  liftIO $ runSettings appSettings app
