@@ -59,23 +59,23 @@ instance ToJSON Username where
 instance FromJSON Username where
   parseJSON (String x) = Username <$> parseJSON (String x)
   parseJSON _ = mzero
-instance Read Username
-instance Enum Username
-instance Bounded Username where
-  minBound = Username ""
-instance SqlType Username
+-- instance Read Username
+-- instance Enum Username
+-- instance Bounded Username where
+--   minBound = Username ""
+-- instance SqlType Username
 
 data User = User
   { username :: Username
   , age :: Int
   , userID :: Int
   } deriving (Eq,Show,Generic)
-instance SqlRow User
+-- instance SqlRow User
 instance ToJSON User
 instance FromJSON User
 
 data UserInfo = UserInfo
-  { username :: String
+  { username :: Username
   , age :: Int
   } deriving (Eq, Show, Generic)
 instance ToJSON UserInfo
@@ -85,33 +85,46 @@ newtype PostResponse = PostResponse Int
 instance ToJSON PostResponse where
   toJSON (PostResponse x) = object [ "userID" .= x ]
 
+data UserRow = UserRow
+  { username :: Text
+  , age :: Int
+  , userID :: Int
+  } deriving (Eq, Show, Generic)
+instance SqlRow UserRow
+instance ToJSON UserRow
+instance FromJSON UserRow
+
+toUser :: UserRow -> User
+toUser (UserRow t a uid) =  User (Username t) a uid
+
+users :: Table UserRow
+users = table "users" [#userID :- primary]
+
 server :: Server UserAPI
 server =  getUser
      :<|> postUser
   where getUser :: Int -> Handler User
         getUser x = withSQLite "user-test.sqlite" $ do
-          returnMe <- query $ do
+          matches <- query $ do
             person <- select users
             restrict (person Selda.! #userID .== (int x))
             return person
-          -- @NOTE: thinking this is wrong
-          -- probably can make this better
-          return $ (Data.List.head returnMe)
+          -- maybe throw an error?
+          case matches of
+            [] -> error $ "No such userID: " ++ show x
+            (x:_) -> return $ toUser x
 
         postUser :: UserInfo -> Handler PostResponse
-        postUser (UserInfo n a) = withSQLite "user-test.sqlite" $ do
-          insert_ users [ User (Username (pack n)) a newUserId ]
+        postUser (UserInfo (Username n) a) = withSQLite "user-test.sqlite" $ do
+          insert_ users [ UserRow n a newUserId ]
           return (PostResponse newUserId)
-          where newUserId = hash $ n ++ (show a)
+          where newUserId = hash $ (unpack n) ++ (show a)
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy
 
 app :: Application
 app = serve userAPI server
-
-users :: Table User
-users = table "users" [#userID :- primary]
 
 appSettings :: Settings
 appSettings = setHost "0.0.0.0" defaultSettings
