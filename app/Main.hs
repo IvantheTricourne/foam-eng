@@ -49,13 +49,24 @@ import Database.Selda.SQLite as SQL
 type UserAPI = "user" :> Capture "userID" Int :> Get '[JSON] User
           :<|> "user" :> ReqBody '[JSON] UserInfo :> Post '[JSON] PostResponse
 
--- @TODO: can we avoid using `Generic`?
-newtype Username = Username String deriving Generic
-instance ToJSON Username
-instance FromJSON Username
+newtype Username = Username Text -- deriving Generic
+instance Show Username where
+  show (Username x) = show x
+instance Eq Username where
+  (Username x) == (Username y) = x == y
+instance ToJSON Username where
+  toJSON (Username x) = toJSON x
+instance FromJSON Username where
+  parseJSON (String x) = Username <$> parseJSON (String x)
+  parseJSON _ = mzero
+instance Read Username
+instance Enum Username
+instance Bounded Username where
+  minBound = Username ""
+instance SqlType Username
 
 data User = User
-  { username :: Text
+  { username :: Username
   , age :: Int
   , userID :: Int
   } deriving (Eq,Show,Generic)
@@ -89,7 +100,7 @@ server =  getUser
 
         postUser :: UserInfo -> Handler PostResponse
         postUser (UserInfo n a) = withSQLite "user-test.sqlite" $ do
-          insert_ users [ User (pack n) a newUserId ]
+          insert_ users [ User (Username (pack n)) a newUserId ]
           return (PostResponse newUserId)
           where newUserId = hash $ n ++ (show a)
 
